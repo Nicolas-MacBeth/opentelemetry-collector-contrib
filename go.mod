@@ -3,6 +3,7 @@ module github.com/open-telemetry/opentelemetry-collector-contrib
 go 1.14
 
 require (
+	github.com/Nicolas-MacBeth/opentelemetry-collector-contrib/receiver/prometheusexecreceiver v0.0.0
 	github.com/client9/misspell v0.3.4
 	github.com/golangci/golangci-lint v1.29.0
 	github.com/google/addlicense v0.0.0-20200622132530-df58acafd6d5
@@ -31,7 +32,6 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/collectdreceiver v0.0.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8sclusterreceiver v0.0.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kubeletstatsreceiver v0.0.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusexecreceiver v0.0.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/receivercreator v0.0.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/redisreceiver v0.0.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/sapmreceiver v0.0.0
@@ -105,7 +105,7 @@ replace github.com/open-telemetry/opentelemetry-collector-contrib/receiver/signa
 
 replace github.com/open-telemetry/opentelemetry-collector-contrib/receiver/simpleprometheusreceiver => ./receiver/simpleprometheusreceiver
 
-replace github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusexecreceiver => ./receiver/prometheusexecreceiver
+replace github.com/Nicolas-MacBeth/opentelemetry-collector-contrib/receiver/prometheusexecreceiver => ./receiver/prometheusexecreceiver
 
 replace github.com/open-telemetry/opentelemetry-collector-contrib/receiver/wavefrontreceiver => ./receiver/wavefrontreceiver
 
