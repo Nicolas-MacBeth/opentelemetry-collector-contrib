@@ -1,4 +1,4 @@
-module github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusexecreceiver
+module github.com/Nicolas-MacBeth/opentelemetry-collector-contrib/receiver/prometheusexecreceiver
 
 go 1.14
 
