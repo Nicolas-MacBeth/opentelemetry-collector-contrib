@@ -23,14 +23,24 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/kballard/go-shellquote"
 	"go.uber.org/zap"
 )
 
+// Process struct holds all the info needed to instantiate a subprocess
+type Process struct {
+	Command string
+	Port    int
+	Env     []EnvConfig
+}
+
 const (
+	// HealthyProcessTime is the default time a process needs to stay alive to be considered healthy
+	HealthyProcessTime time.Duration = 30 * time.Minute
+	// HealthyCrashCount is the amount of times a process can crash (within the healthyProcessTime) before being considered unstable - it may be trying to find a port
+	HealthyCrashCount int = 3
 	// delayMutiplier is the factor by which the delay scales
 	delayMultiplier float64 = 2.0
 	// initialDelay is the initial delay before a process is restarted
@@ -136,11 +146,4 @@ func formatEnvSlice(envs *[]EnvConfig) []string {
 	}
 
 	return envSlice
-}
-
-// handleParentProcessKill kills the subprocess when the parent process dies, it is Linux-specific
-func handleParentProcessKill(cmd *exec.Cmd) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Pdeathsig: syscall.SIGTERM,
-	}
 }
