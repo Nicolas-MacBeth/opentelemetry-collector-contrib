@@ -20,10 +20,11 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/config/configmodels"
+	"go.opentelemetry.io/collector/config/configtest"
 
-	"github.com/Nicolas-MacBeth/opentelemetry-collector-contrib/receiver/prometheusexecreceiver/subprocessmanager"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusexecreceiver/subprocessmanager"
 )
 
 var (
@@ -33,9 +34,9 @@ var (
 			NameVal: "prometheus_exec/test",
 		},
 		ScrapeInterval: 60 * time.Second,
+		Port:           9104,
 		SubprocessConfig: subprocessmanager.SubprocessConfig{
 			Command: "mysqld_exporter",
-			Port:    9104,
 			Env:     []subprocessmanager.EnvConfig{},
 		},
 	}
@@ -57,10 +58,10 @@ var (
 			TypeVal: configmodels.Type("prometheus_exec"),
 			NameVal: "prometheus_exec/end_to_end_test/1",
 		},
-		ScrapeInterval: 2 * time.Second,
+		ScrapeInterval: 100 * time.Millisecond,
+		Port:           9999,
 		SubprocessConfig: subprocessmanager.SubprocessConfig{
-			Command: "go run ./testdata/end_to_end_metrics_test/test_prometheus_exporter.go 9999",
-			Port:    9999,
+			Command: "go run ./testdata/end_to_end_metrics_test/test_prometheus_exporter.go {{port}}",
 			Env: []subprocessmanager.EnvConfig{
 				{
 					Name:  "DATA_SOURCE_NAME",
@@ -79,7 +80,7 @@ var (
 			TypeVal: configmodels.Type("prometheus_exec"),
 			NameVal: "prometheus_exec/end_to_end_test/2",
 		},
-		ScrapeInterval: 2 * time.Second,
+		ScrapeInterval: 100 * time.Millisecond,
 		SubprocessConfig: subprocessmanager.SubprocessConfig{
 			Command: "go run ./testdata/end_to_end_metrics_test/test_prometheus_exporter.go {{port}}",
 			Env:     []subprocessmanager.EnvConfig{},
@@ -88,14 +89,14 @@ var (
 )
 
 func TestLoadConfig(t *testing.T) {
-	factories, err := config.ExampleComponents()
+	factories, err := componenttest.ExampleComponents()
 	assert.NoError(t, err)
 
-	factory := &Factory{}
+	factory := NewFactory()
 	receiverType := "prometheus_exec"
 	factories.Receivers[configmodels.Type(receiverType)] = factory
 
-	config, err := config.LoadConfigFile(t, path.Join(".", "testdata", "config.yaml"), factories)
+	config, err := configtest.LoadConfigFile(t, path.Join(".", "testdata", "config.yaml"), factories)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, config)

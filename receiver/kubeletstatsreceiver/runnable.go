@@ -18,6 +18,8 @@ import (
 	"context"
 
 	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/consumer/consumerdata"
+	"go.opentelemetry.io/collector/consumer/pdatautil"
 	"go.opentelemetry.io/collector/obsreport"
 	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"
@@ -30,31 +32,32 @@ import (
 var _ interval.Runnable = (*runnable)(nil)
 
 type runnable struct {
-	ctx                 context.Context
-	receiverName        string
-	statsProvider       *kubelet.StatsProvider
-	metadataProvider    *kubelet.MetadataProvider
-	consumer            consumer.MetricsConsumerOld
-	logger              *zap.Logger
-	restClient          kubelet.RestClient
-	extraMetadataLabels []kubelet.MetadataLabel
+	ctx                   context.Context
+	receiverName          string
+	statsProvider         *kubelet.StatsProvider
+	metadataProvider      *kubelet.MetadataProvider
+	consumer              consumer.MetricsConsumer
+	logger                *zap.Logger
+	restClient            kubelet.RestClient
+	extraMetadataLabels   []kubelet.MetadataLabel
+	metricGroupsToCollect map[kubelet.MetricGroup]bool
 }
 
 func newRunnable(
 	ctx context.Context,
-	receiverName string,
-	consumer consumer.MetricsConsumerOld,
+	consumer consumer.MetricsConsumer,
 	restClient kubelet.RestClient,
-	extraMetadataLabels []kubelet.MetadataLabel,
 	logger *zap.Logger,
+	rOptions *receiverOptions,
 ) *runnable {
 	return &runnable{
-		ctx:                 ctx,
-		receiverName:        receiverName,
-		consumer:            consumer,
-		restClient:          restClient,
-		logger:              logger,
-		extraMetadataLabels: extraMetadataLabels,
+		ctx:                   ctx,
+		receiverName:          rOptions.name,
+		consumer:              consumer,
+		restClient:            restClient,
+		logger:                logger,
+		extraMetadataLabels:   rOptions.extraMetadataLabels,
+		metricGroupsToCollect: rOptions.metricGroupsToCollect,
 	}
 }
 
@@ -84,11 +87,11 @@ func (r *runnable) Run() error {
 	}
 
 	metadata := kubelet.NewMetadata(r.extraMetadataLabels, podsMetadata)
-	mds := kubelet.MetricsData(r.logger, summary, metadata, typeStr)
+	mds := kubelet.MetricsData(r.logger, summary, metadata, typeStr, r.metricGroupsToCollect)
 	ctx := obsreport.ReceiverContext(r.ctx, typeStr, transport, r.receiverName)
 	for _, md := range mds {
 		ctx = obsreport.StartMetricsReceiveOp(ctx, typeStr, transport)
-		err = r.consumer.ConsumeMetricsData(ctx, *md)
+		err = r.consumer.ConsumeMetrics(ctx, pdatautil.MetricsFromMetricsData([]consumerdata.MetricsData{*md}))
 		var numTimeSeries, numPoints int
 		if err != nil {
 			r.logger.Error("ConsumeMetricsData failed", zap.Error(err))

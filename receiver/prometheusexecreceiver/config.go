@@ -19,7 +19,7 @@ import (
 
 	"go.opentelemetry.io/collector/config/configmodels"
 
-	"github.com/Nicolas-MacBeth/opentelemetry-collector-contrib/receiver/prometheusexecreceiver/subprocessmanager"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusexecreceiver/subprocessmanager"
 )
 
 // Config definition for prometheus_exec configuration
@@ -28,6 +28,8 @@ type Config struct {
 	configmodels.ReceiverSettings `mapstructure:",squash"`
 	// ScrapeInterval is the time between each scrape completed by the Receiver
 	ScrapeInterval time.Duration `mapstructure:"scrape_interval,omitempty"`
+	// Port is the port assigned to the Receiver, and to the {{port}} template variables
+	Port int `mapstructure:"port"`
 	// SubprocessConfig is the configuration needed for the subprocess
 	SubprocessConfig subprocessmanager.SubprocessConfig `mapstructure:",squash"`
 }

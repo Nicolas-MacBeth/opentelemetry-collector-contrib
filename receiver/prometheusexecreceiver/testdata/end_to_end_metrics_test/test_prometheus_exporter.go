@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// This file will be used in the end_to_end test for prometheus_exec receiver
+// It acts as a Prometheus exporter, exposing an endpoint to be scraped with metrics
 package main
 
 import (
@@ -23,8 +25,6 @@ import (
 	"time"
 )
 
-// This file will be used in the end_to_end test for prometheus_exec receiver
-// It acts as a Prometheus exporter, exposing an endpoint to be scraped with metrics
 func main() {
 	writeMetrics()
 	server()
@@ -36,10 +36,9 @@ func writeMetrics() {
 	if err != nil {
 		return
 	}
+	defer f.Close()
 
-	f.WriteString(fmt.Sprintf("# HELP timestamp_now Unix timestamp\n# TYPE timestamp_now gauge\ntimestamp_now %v", strconv.FormatInt(time.Now().Unix(), 10)))
-
-	f.Close()
+	f.WriteString(fmt.Sprintf("# HELP timestamp_now Unix timestamp\n# TYPE timestamp_now gauge\ntimestamp_now %v", strconv.FormatInt(time.Now().UnixNano(), 10)))
 }
 
 // server serves one route "./metrics" and will shutdown the server as soon as it is scraped once, to allow for the next subprocess to be run

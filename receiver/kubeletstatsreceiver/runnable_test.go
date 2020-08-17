@@ -22,50 +22,72 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/collector/consumer/consumerdata"
+	"go.opentelemetry.io/collector/consumer/pdatautil"
+	"go.opentelemetry.io/collector/exporter/exportertest"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kubeletstatsreceiver/kubelet"
 )
 
-const dataLen = 19
+const (
+	dataLen = numContainers + numPods + numNodes + numVolumes
+
+	// Number of resources by type in testdata/stats-summary.json
+	numContainers = 9
+	numPods       = 9
+	numNodes      = 1
+	numVolumes    = 9
+)
+
+var allMetricGroups = map[kubelet.MetricGroup]bool{
+	kubelet.ContainerMetricGroup: true,
+	kubelet.PodMetricGroup:       true,
+	kubelet.NodeMetricGroup:      true,
+	kubelet.VolumeMetricGroup:    true,
+}
 
 func TestRunnable(t *testing.T) {
-	consumer := &fakeConsumer{}
+	consumer := &exportertest.SinkMetricsExporter{}
+	options := &receiverOptions{
+		metricGroupsToCollect: allMetricGroups,
+	}
 	r := newRunnable(
 		context.Background(),
-		"",
 		consumer,
 		&fakeRestClient{},
-		nil,
 		zap.NewNop(),
+		options,
 	)
 	err := r.Setup()
 	require.NoError(t, err)
 	err = r.Run()
 	require.NoError(t, err)
-	require.Equal(t, dataLen, len(consumer.mds))
+	require.Equal(t, dataLen, len(consumer.AllMetrics()))
 }
 
 func TestRunnableWithMetadata(t *testing.T) {
-	consumer := &fakeConsumer{}
+	consumer := &exportertest.SinkMetricsExporter{}
+	options := &receiverOptions{
+		extraMetadataLabels:   []kubelet.MetadataLabel{kubelet.MetadataLabelContainerID},
+		metricGroupsToCollect: allMetricGroups,
+	}
 	r := newRunnable(
 		context.Background(),
-		"",
 		consumer,
 		&fakeRestClient{},
-		[]kubelet.MetadataLabel{kubelet.MetadataLabelContainerID},
 		zap.NewNop(),
+		options,
 	)
 	err := r.Setup()
 	require.NoError(t, err)
 	err = r.Run()
 	require.NoError(t, err)
-	require.Equal(t, dataLen, len(consumer.mds))
+	require.Equal(t, dataLen, len(consumer.AllMetrics()))
 
 	// make sure container.id labels are set on all container metrics
-	for _, md := range consumer.mds {
+	for _, metrics := range consumer.AllMetrics() {
+		md := pdatautil.MetricsToMetricsData(metrics)[0]
 		for _, m := range md.Metrics {
 			if strings.HasPrefix(m.MetricDescriptor.GetName(), "container.") {
 				_, ok := md.Resource.Labels[string(kubelet.MetadataLabelContainerID)]
@@ -76,32 +98,137 @@ func TestRunnableWithMetadata(t *testing.T) {
 	}
 }
 
+func TestRunnableWithMetricGroups(t *testing.T) {
+	tests := []struct {
+		name         string
+		metricGroups map[kubelet.MetricGroup]bool
+		dataLen      int
+	}{
+		{
+			name:         "all groups",
+			metricGroups: allMetricGroups,
+			dataLen:      dataLen,
+		},
+		{
+			name: "only container group",
+			metricGroups: map[kubelet.MetricGroup]bool{
+				kubelet.ContainerMetricGroup: true,
+			},
+			dataLen: numContainers,
+		},
+		{
+			name: "only pod group",
+			metricGroups: map[kubelet.MetricGroup]bool{
+				kubelet.PodMetricGroup: true,
+			},
+			dataLen: numPods,
+		},
+		{
+			name: "only node group",
+			metricGroups: map[kubelet.MetricGroup]bool{
+				kubelet.NodeMetricGroup: true,
+			},
+			dataLen: numNodes,
+		},
+		{
+			name: "only volume group",
+			metricGroups: map[kubelet.MetricGroup]bool{
+				kubelet.VolumeMetricGroup: true,
+			},
+			dataLen: numVolumes,
+		},
+		{
+			name: "pod and node groups",
+			metricGroups: map[kubelet.MetricGroup]bool{
+				kubelet.PodMetricGroup:  true,
+				kubelet.NodeMetricGroup: true,
+			},
+			dataLen: numNodes + numPods,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			consumer := &exportertest.SinkMetricsExporter{}
+			r := newRunnable(
+				context.Background(),
+				consumer,
+				&fakeRestClient{},
+				zap.NewNop(),
+				&receiverOptions{
+					extraMetadataLabels:   []kubelet.MetadataLabel{kubelet.MetadataLabelContainerID},
+					metricGroupsToCollect: test.metricGroups,
+				},
+			)
+
+			err := r.Setup()
+			require.NoError(t, err)
+
+			err = r.Run()
+			require.NoError(t, err)
+
+			require.Equal(t, test.dataLen, len(consumer.AllMetrics()))
+		})
+	}
+}
+
 func TestClientErrors(t *testing.T) {
 	tests := []struct {
-		name                string
-		statsSummaryFail    bool
-		podsFail            bool
-		extraMetadataLabels []kubelet.MetadataLabel
-		numLogs             int
+		name                  string
+		statsSummaryFail      bool
+		podsFail              bool
+		extraMetadataLabels   []kubelet.MetadataLabel
+		metricGroupsToCollect map[kubelet.MetricGroup]bool
+		numLogs               int
 	}{
-		{"no_errors_without_metadata", false, false, nil, 0},
-		{"no_errors_with_metadata", false, false, []kubelet.MetadataLabel{kubelet.MetadataLabelContainerID}, 0},
-		{"stats_summary_endpoint_error", true, false, nil, 1},
-		{"pods_endpoint_error", false, true, []kubelet.MetadataLabel{kubelet.MetadataLabelContainerID}, 1},
+		{
+			name:                  "no_errors_without_metadata",
+			statsSummaryFail:      false,
+			podsFail:              false,
+			extraMetadataLabels:   nil,
+			metricGroupsToCollect: allMetricGroups,
+			numLogs:               0,
+		},
+		{
+			name:                  "no_errors_with_metadata",
+			statsSummaryFail:      false,
+			podsFail:              false,
+			extraMetadataLabels:   []kubelet.MetadataLabel{kubelet.MetadataLabelContainerID},
+			metricGroupsToCollect: allMetricGroups,
+			numLogs:               0,
+		},
+		{
+			name:                  "stats_summary_endpoint_error",
+			statsSummaryFail:      true,
+			podsFail:              false,
+			extraMetadataLabels:   nil,
+			metricGroupsToCollect: allMetricGroups,
+			numLogs:               1,
+		},
+		{
+			name:                  "pods_endpoint_error",
+			statsSummaryFail:      false,
+			podsFail:              true,
+			extraMetadataLabels:   []kubelet.MetadataLabel{kubelet.MetadataLabelContainerID},
+			metricGroupsToCollect: allMetricGroups,
+			numLogs:               1,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			core, observedLogs := observer.New(zap.ErrorLevel)
+			options := &receiverOptions{
+				extraMetadataLabels:   test.extraMetadataLabels,
+				metricGroupsToCollect: test.metricGroupsToCollect,
+			}
 			r := newRunnable(
 				context.Background(),
-				"",
-				&fakeConsumer{},
+				&exportertest.SinkMetricsExporter{},
 				&fakeRestClient{
 					statsSummaryFail: test.statsSummaryFail,
 					podsFail:         test.podsFail,
 				},
-				test.extraMetadataLabels,
 				zap.New(core),
+				options,
 			)
 			err := r.Setup()
 			require.NoError(t, err)
@@ -124,13 +251,20 @@ func TestConsumerErrors(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			core, observedLogs := observer.New(zap.ErrorLevel)
+			options := &receiverOptions{
+				extraMetadataLabels:   nil,
+				metricGroupsToCollect: allMetricGroups,
+			}
+			sink := &exportertest.SinkMetricsExporter{}
+			if test.fail {
+				sink.SetConsumeMetricsError(errors.New("failed"))
+			}
 			r := newRunnable(
 				context.Background(),
-				"",
-				&fakeConsumer{fail: test.fail},
+				sink,
 				&fakeRestClient{},
-				nil,
 				zap.New(core),
+				options,
 			)
 			err := r.Setup()
 			require.NoError(t, err)
@@ -139,22 +273,6 @@ func TestConsumerErrors(t *testing.T) {
 			require.Equal(t, test.numLogs, observedLogs.Len())
 		})
 	}
-}
-
-type fakeConsumer struct {
-	fail bool
-	mds  []consumerdata.MetricsData
-}
-
-func (c *fakeConsumer) ConsumeMetricsData(
-	ctx context.Context,
-	md consumerdata.MetricsData,
-) error {
-	if c.fail {
-		return errors.New("")
-	}
-	c.mds = append(c.mds, md)
-	return nil
 }
 
 var _ kubelet.RestClient = (*fakeRestClient)(nil)
